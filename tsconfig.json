@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "lib": ["es6", "dom"],
+    "module": "commonjs",
+    "target": "es6",
+    "types": ["reflect-metadata"]
+  },
+  "compileOnSave": false,
+  "exclude": ["node_modules"]
+}
