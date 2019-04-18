@@ -41,11 +41,11 @@ export default class ImportFeedTask implements Task {
         }
       ))
       .on('error', error => {
-        self.ui.writeWarnLine('error storing article');
-        self.ui.writeWarnLine(JSON.stringify(error, null, 2));
+        this.ui.writeWarnLine('error storing article');
+        this.ui.writeWarnLine(JSON.stringify(error, null, 2));
       })
       .on('end', () => {
-        self.ui.writeInfoLine('importing stream should be complete');
+        this.ui.writeInfoLine('importing stream should be complete');
       });
   }
 }

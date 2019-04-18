@@ -52,7 +52,7 @@ export default class ScrapeGalnetTask implements Task {
             await pagesStore.put(page);
           } catch (error) {
             self.ui.writeWarnLine('error storing page');
-            self.ui.writeWarnLine(error);
+            self.ui.writeWarnLine(JSON.stringify(error, null, 2));
           }
 
           (await self.getArticles(url)).forEach(article => this.push(article));
@@ -68,7 +68,7 @@ export default class ScrapeGalnetTask implements Task {
             await articlesStore.put(article)
           } catch (error) {
             self.ui.writeWarnLine('error storing article');
-            self.ui.writeWarnLine(error);
+            self.ui.writeWarnLine(JSON.stringify(error, null, 2));
           }
 
           callback();
