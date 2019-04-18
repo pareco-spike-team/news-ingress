@@ -1,13 +1,12 @@
-news-ingress
-==============================================================================
+# news-ingress
 
-Imports Galnet News CSV into Neo4j
+Small utility application to work with Galnet
 
-Environment Configuration
-------------------------------------------------------------------------------
+## Environment Configuration
 
 The following environment variables are required:
 
+* NEWS_INGRESS_DEVELOPMENT_COUCHDB_URL
 * NEWS_INGRESS_DEVELOPMENT_NEO4J_URL
 
 Optional, but may apply:
@@ -15,20 +14,31 @@ Optional, but may apply:
 * NEWS_INGRESS_DEVELOPMENT_NEO4J_USERNAME
 * NEWS_INGRESS_DEVELOPMENT_NEO4J_PASSWORD
 
-Installation
-------------------------------------------------------------------------------
+## Installation
 
 ```
 npm install
 ```
 
-Usage
-------------------------------------------------------------------------------
+## Usage
 
-You can call `npm start` to automatically begin importing the `feed.csv` into
-neo4j.
+```
+npm start
+```
 
-License
-------------------------------------------------------------------------------
+You will be presented with a small menu that asks you which task you would like
+to run.
+
+### Using Docker Compose
+
+```
+docker-compose up
+```
+
+The included `docker-compose.yml` contains insecure data services that are used
+by this application. This is useful for development and is not intended for
+production use.
+
+## License
 
 This project is licensed under the [ISC License](LICENSE).
