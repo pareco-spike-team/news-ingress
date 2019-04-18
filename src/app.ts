@@ -1,4 +1,4 @@
-import { kScrapeGalnetTask, kImportFeedTask, kUI } from './types';
+import { kScrapeGalnetTask, kImportFeedTask, kUI, kImportMarkdownTask } from './types';
 import container from './container';
 import Task from './interfaces/task';
 import UI from 'console-ui';
@@ -16,6 +16,9 @@ export default async function app(): Promise<any> {
     }, {
       name: 'Import Feed CSS',
       value: kImportFeedTask
+    }, {
+      name: 'Import Markdown',
+      value: kImportMarkdownTask
     }]
   });
 

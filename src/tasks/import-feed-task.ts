@@ -18,7 +18,7 @@ export default class ImportFeedTask implements Task {
   async run(): Promise<Readable> {
     const self = this;
     const session = this.graphStore.driver.session();
-    const feed = join(process.cwd(), 'feed.csv');
+    const feed = join(process.cwd(), 'data', 'feed.csv');
     const parser = parse({ delimiter: ',' });
 
     return createReadStream(feed, { autoClose: true })

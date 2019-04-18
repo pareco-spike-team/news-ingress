@@ -4,14 +4,39 @@ services:
   couchdb:
     image: couchdb:2.3.1
     ports:
-      - 5984:5984
+      - target: 5984
+        published: 5984
     networks:
       - pareco
     volumes:
-      - couchdb-data:/opt/couchdb/data
+      - type: volume
+        source: couchdb-data
+        target: /opt/couchdb/data
+
+  neo4j:
+    image: neo4j:3.5.0
+    environment:
+      NEO4J_AUTH: "${NEO4J_AUTH:-none}"
+    ports:
+      - target: 7473
+        published: 7473
+        protocol: tcp
+      - target: 7474
+        published: 7474
+        protocol: tcp
+      - target: 7687
+        published: 7687
+        protocol: tcp
+    networks:
+      - pareco
+    volumes:
+      - type: volume
+        source: neo4j-data
+        target: /data
 
 networks:
   pareco:
 
 volumes:
   couchdb-data:
+  neo4j-data:
