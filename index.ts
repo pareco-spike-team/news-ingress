@@ -1,4 +1,4 @@
-import feed from './src/feed';
-import crawler from './src/crawler';
-// feed();
-crawler();
+import 'reflect-metadata';
+import app from './src/app';
+
+app();
