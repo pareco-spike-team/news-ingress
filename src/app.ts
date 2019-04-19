@@ -1,4 +1,4 @@
-import { kScrapeGalnetTask, kImportFeedTask, kUI, kImportMarkdownTask } from './types';
+import { kScrapeGalnetTask, kImportFeedTask, kUI, kImportMarkdownTask, kIndexElasticsearchTask } from './types';
 import container from './container';
 import Task from './interfaces/task';
 import UI from 'console-ui';
@@ -19,6 +19,9 @@ export default async function app(): Promise<any> {
     }, {
       name: 'Import Markdown',
       value: kImportMarkdownTask
+    }, {
+      name: 'Index Galnet',
+      value: kIndexElasticsearchTask
     }]
   });
 

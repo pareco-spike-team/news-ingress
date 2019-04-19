@@ -23,6 +23,7 @@
   "homepage": "https://github.com/pareco-spike-team/news-ingress#readme",
   "dependencies": {
     "@atsjj/env-config": "github:atsjj/env-config.js",
+    "@elastic/elasticsearch": "^7.0.0-rc.2",
     "@types/chai": "^4.1.7",
     "@types/cheerio": "^0.22.11",
     "@types/console-ui": "^2.2.0",
