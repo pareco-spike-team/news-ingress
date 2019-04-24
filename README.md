@@ -8,6 +8,7 @@ The following environment variables are required:
 
 * NEWS_INGRESS_DEVELOPMENT_COUCHDB_URL
 * NEWS_INGRESS_DEVELOPMENT_NEO4J_URL
+* NEWS_INGRESS_DEVELOPMENT_TOKENIZATION_URL
 
 Optional, but may apply:
 

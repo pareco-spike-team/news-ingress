@@ -3,15 +3,17 @@ import { createInterface } from 'readline';
 import { decodeStream } from 'iconv-lite';
 import { inject, injectable } from 'inversify';
 import { join } from 'path';
-import { kGraphStore, kUI } from '../types';
+import { kGraphStore, kUI, kEnvStore } from '../types';
 import { Readable } from 'stream';
 import { TransformCallback, obj } from 'through2';
 import GraphStore from '../stores/graph-store';
 import Task from '../interfaces/task';
 import UI from 'console-ui';
 import intoStream from 'into-stream';
-import { titleize } from 'inflected';
+import { titleize, camelize } from 'inflected';
 import generateUuid from '../utils/uuid';
+import fetch from 'node-fetch';
+import { EnvConfig } from '@atsjj/env-config';
 
 interface Tag {
   tag: string;
@@ -24,6 +26,11 @@ interface Document {
   title: string;
   text: string;
   tags: Tag[];
+}
+
+interface Entity {
+  type: string;
+  value: string;
 }
 
 /*
@@ -119,12 +126,15 @@ function caseInsensitiveRegexMatch(value: string): string {
 
 @injectable()
 export default class ImportMarkdownTask implements Task {
+  @inject(kEnvStore) env: EnvConfig;
   @inject(kGraphStore) graphStore: GraphStore;
   @inject(kUI) ui: UI;
 
   async run(): Promise<any> {
     const documents = await this.getArticles();
     const session = this.graphStore.driver.session();
+    const tokenizationUrl = this.env.required('tokenization.url');
+    const method = 'POST';
 
     this.ui.startProgress('storing tags');
 
@@ -195,6 +205,38 @@ export default class ImportMarkdownTask implements Task {
           params[`tag${i}_${j}`] = caseInsensitiveRegexMatch(subTag.tag);
         });
       });
+
+      this.ui.startProgress('tokenizing document');
+
+      const body = `${document.title}\n${document.text}`;
+      const entities: Entity[] = await (await fetch(tokenizationUrl, { body, method })).json();
+
+      this.ui.startProgress('storing tokens');
+
+      let k = 0;
+      for (const entity of entities) {
+        const type = titleize(entity.type)
+        const key = camelize(entity.type)
+
+        try {
+          await session.run(`
+            MERGE (t:${type} { tag: {tag} }) RETURN t
+          `, { tag: entity.value })
+
+          queries.push(`
+            MATCH (t:${type}) WHERE t.tag =~ {${key}_${k}}
+            MERGE (a)-[:${type}]->(t)
+            WITH a
+          `);
+
+          params[`${key}_${k}`] = caseInsensitiveRegexMatch(entity.value);
+
+          k++;
+        } catch (error) {
+          this.ui.writeWarnLine('error storing tag');
+          this.ui.writeWarnLine(JSON.stringify(error, null, 2));
+        }
+      }
 
       queries.push(`
         RETURN 0
