@@ -206,42 +206,42 @@ export default class ImportMarkdownTask implements Task {
         });
       });
 
-      try {
-        this.ui.startProgress('tokenizing document');
+      // try {
+      //   this.ui.startProgress('tokenizing document');
 
-        const body = `${document.title}\n${document.text}`;
-        const entities: Entity[] = await (await fetch(tokenizationUrl, { body, method })).json();
+      //   const body = `${document.title}\n${document.text}`;
+      //   const entities: Entity[] = await (await fetch(tokenizationUrl, { body, method })).json();
 
-        this.ui.startProgress('storing tokens');
+      //   this.ui.startProgress('storing tokens');
 
-        let k = 0;
-        for (const entity of entities) {
-          const type = classify(entity.type)
-          const key = camelize(entity.type)
+      //   let k = 0;
+      //   for (const entity of entities) {
+      //     const type = classify(entity.type)
+      //     const key = camelize(entity.type)
 
-          try {
-            await session.run(`
-              MERGE (t:${type} { tag: {tag} }) RETURN t
-            `, { tag: entity.value })
+      //     try {
+      //       await session.run(`
+      //         MERGE (t:${type} { tag: {tag} }) RETURN t
+      //       `, { tag: entity.value })
 
-            queries.push(`
-              MATCH (t:${type}) WHERE t.tag =~ {${key}_${k}}
-              MERGE (a)-[:${type}]->(t)
-              WITH a
-            `);
+      //       queries.push(`
+      //         MATCH (t:${type}) WHERE t.tag =~ {${key}_${k}}
+      //         MERGE (a)-[:${type}]->(t)
+      //         WITH a
+      //       `);
 
-            params[`${key}_${k}`] = caseInsensitiveRegexMatch(entity.value);
+      //       params[`${key}_${k}`] = caseInsensitiveRegexMatch(entity.value);
 
-            k++;
-          } catch (error) {
-            this.ui.writeWarnLine('error storing tag');
-            this.ui.writeWarnLine(JSON.stringify(error, null, 2));
-          }
-        }
-      } catch (error) {
-        this.ui.writeWarnLine('error parsing entities');
-        this.ui.writeWarnLine(JSON.stringify(error, null, 2));
-      }
+      //       k++;
+      //     } catch (error) {
+      //       this.ui.writeWarnLine('error storing tag');
+      //       this.ui.writeWarnLine(JSON.stringify(error, null, 2));
+      //     }
+      //   }
+      // } catch (error) {
+      //   this.ui.writeWarnLine('error parsing entities');
+      //   this.ui.writeWarnLine(JSON.stringify(error, null, 2));
+      // }
 
       queries.push(`
         RETURN 0
