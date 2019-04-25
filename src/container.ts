@@ -20,12 +20,12 @@ const ui = new UI({
   ci: false
 });
 
-const elasticStore = new Client({
-  node: envStore.required('elasticsearch.url')
-});
+// const elasticStore = new Client({
+//   node: envStore.required('elasticsearch.url')
+// });
 
-container.bind(kDocumentStore).to(DocumentStore).inSingletonScope();
-container.bind(kElasticStore).toConstantValue(elasticStore);
+// container.bind(kDocumentStore).to(DocumentStore).inSingletonScope();
+// container.bind(kElasticStore).toConstantValue(elasticStore);
 container.bind(kEnvStore).toConstantValue(envStore);
 container.bind(kGraphStore).to(GraphStore).inSingletonScope();
 container.bind(kImportFeedTask).to(ImportFeedTask);

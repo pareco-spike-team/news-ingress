@@ -11,17 +11,8 @@ export default async function app(): Promise<any> {
     type: 'list',
     message: 'Which task would you like to run?',
     choices: [{
-      name: 'Scrape Galnet',
-      value: kScrapeGalnetTask
-    }, {
-      name: 'Import Feed CSS',
-      value: kImportFeedTask
-    }, {
       name: 'Import Markdown',
       value: kImportMarkdownTask
-    }, {
-      name: 'Index Galnet',
-      value: kIndexElasticsearchTask
     }]
   });
 
