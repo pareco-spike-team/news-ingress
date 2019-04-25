@@ -10,7 +10,7 @@ import GraphStore from '../stores/graph-store';
 import Task from '../interfaces/task';
 import UI from 'console-ui';
 import intoStream from 'into-stream';
-import { titleize, camelize } from 'inflected';
+import { titleize, camelize, classify } from 'inflected';
 import generateUuid from '../utils/uuid';
 import fetch from 'node-fetch';
 import { EnvConfig } from '@atsjj/env-config';
@@ -215,7 +215,7 @@ export default class ImportMarkdownTask implements Task {
 
       let k = 0;
       for (const entity of entities) {
-        const type = titleize(entity.type)
+        const type = classify(entity.type)
         const key = camelize(entity.type)
 
         try {
