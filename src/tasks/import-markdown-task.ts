@@ -11,6 +11,7 @@ import generateUuid from '../utils/uuid';
 import GraphStore from '../stores/graph-store';
 import Task from '../interfaces/task';
 import UI from 'console-ui';
+import moment = require('moment');
 
 interface Tag {
   tag: string;
@@ -176,20 +177,38 @@ export default class ImportMarkdownTask implements Task {
     session.close();
   }
 
+  reportProgress(task: string): InsertProgressCallback {
+    const startedAt = moment();
+
+    return (i, m) => {
+      const p = Math.ceil((i / m) * 100);
+
+      this.ui.startProgress(`${task} (${i} of ${m}, ${p}%)`);
+
+      if (i === m || i === (m - 1)) {
+        const finishedAt = moment();
+        const d = moment.duration(finishedAt.diff(startedAt)).humanize();
+
+        this.ui.stopProgress();
+        this.ui.writeInfoLine(`${task} (completed ${m} in ${d})`);
+      }
+    };
+  }
+
   async run(): Promise<any> {
     const documents = await this.getArticles();
     const [entityMap, entityRelationshipMap, documentRelationshipMap] = this.entitiesFrom(documents);
 
     this.ui.startProgress('');
 
-    const [entityTokenMap, documentTokenRelationshipMap] = await this.entitiesFromTokenization(documents, (i, m) => this.ui.startProgress(`Fetching tokens (${Math.ceil((i/m)*100)}%)`));
+    const [entityTokenMap, documentTokenRelationshipMap] = await this.entitiesFromTokenization(documents, this.reportProgress('Fetching tokens'));
 
-    await this.insert(this.createArticleQueriesFrom(documents), (i, m) => this.ui.startProgress(`Creating articles (${Math.ceil((i/m)*100)}%)`));
-    await this.insert(this.createTagQueriesFrom(entityMap), (i, m) => this.ui.startProgress(`Creating tags (${Math.ceil((i/m)*100)}%)`));
-    await this.insert(this.createTagRelationshipQueriesFrom(entityRelationshipMap), (i, m) => this.ui.startProgress(`Creating tag relationships (${Math.ceil((i/m)*100)}%)`));
-    await this.insert(this.createArticleRelationshipQueriesFrom(documentRelationshipMap), (i, m) => this.ui.startProgress(`Creating article relationships (${Math.ceil((i/m)*100)}%)`));
-    await this.insert(this.createTagQueriesFromTokens(entityTokenMap), (i, m) => this.ui.startProgress(`Creating tokens (${Math.ceil((i/m)*100)}%)`));
-    await this.insert(this.createArticleRelationshipQueriesFromTokens(entityTokenMap, documentTokenRelationshipMap), (i, m) => this.ui.startProgress(`Creating token relationships (${Math.ceil((i/m)*100)}%)`));
+    await this.insert(this.createArticleQueriesFrom(documents), this.reportProgress('Creating articles'));
+    await this.insert(this.createTagQueriesFrom(entityMap), this.reportProgress('Creating tags'));
+    await this.insert(this.createTagQueriesFromTokens(entityTokenMap), this.reportProgress('Creating tokens'));
+    await this.insert(this.createTagRelationshipQueriesFrom(entityRelationshipMap), this.reportProgress('Creating tag relationships'));
+    await this.insert(this.createArticleRelationshipQueriesFrom(documentRelationshipMap), this.reportProgress('Creating article relationships'));
+    await this.insert(this.createArticleRelationshipQueriesFromTokens(entityTokenMap, documentTokenRelationshipMap), this.reportProgress('Creating token relationships'));
 
     this.ui.stopProgress();
   }
