@@ -1,19 +1,16 @@
-import { createReadStream } from 'fs';
 import { createInterface } from 'readline';
+import { createReadStream } from 'fs';
 import { decodeStream } from 'iconv-lite';
+import { EnvConfig } from '@atsjj/env-config';
 import { inject, injectable } from 'inversify';
 import { join } from 'path';
 import { kGraphStore, kUI, kEnvStore } from '../types';
-import { Readable } from 'stream';
-import { TransformCallback, obj } from 'through2';
+import { titleize, camelize, classify, underscore, parameterize } from 'inflected';
+import fetch from 'node-fetch';
+import generateUuid from '../utils/uuid';
 import GraphStore from '../stores/graph-store';
 import Task from '../interfaces/task';
 import UI from 'console-ui';
-import intoStream from 'into-stream';
-import { titleize, camelize, classify } from 'inflected';
-import generateUuid from '../utils/uuid';
-import fetch from 'node-fetch';
-import { EnvConfig } from '@atsjj/env-config';
 
 interface Tag {
   tag: string;
@@ -22,6 +19,7 @@ interface Tag {
 }
 
 interface Document {
+  id: string;
   date: string;
   title: string;
   text: string;
@@ -29,6 +27,12 @@ interface Document {
 }
 
 interface Entity {
+  type: string;
+  value: string;
+}
+
+interface EntityLabel {
+  key: string;
   type: string;
   value: string;
 }
@@ -124,155 +128,314 @@ function caseInsensitiveRegexMatch(value: string): string {
   return `(?muis)${value.toLowerCase()}`;
 }
 
+function generateQueryVariable(...values: string[]): string {
+  return camelize(underscore(values.join('')));
+}
+
+function uuidize(...values: string[]): string {
+  return generateUuid(parameterize(values.join(' ')));
+}
+
+type EntitiesTuple = [Map<string, string>, Map<string, Set<string>>, Map<string, Set<string>>];
+type EntitiesTokensTuple = [Map<string, Entity>, Map<string, Set<string>>];
+type EntityParam = { [x: string]: string };
+type QueryTuple = [string[], EntityParam[]];
+type InsertProgressCallback = (current: number, max: number) => void;
+
 @injectable()
 export default class ImportMarkdownTask implements Task {
   @inject(kEnvStore) env: EnvConfig;
   @inject(kGraphStore) graphStore: GraphStore;
   @inject(kUI) ui: UI;
 
-  async run(): Promise<any> {
-    const documents = await this.getArticles();
+  async insert(queryTuple: QueryTuple, cb?: InsertProgressCallback): Promise<any> {
     const session = this.graphStore.driver.session();
-    const tokenizationUrl = this.env.required('tokenization.url');
-    const method = 'POST';
+    const max = queryTuple[0].length;
 
-    this.ui.startProgress('storing tags');
-
-    for (const tag of this.tagsFrom(documents).values()) {
-      try {
-        await session.run(`
-          MERGE (t:Tag { tag: {tag} }) RETURN t
-        `, { tag })
-      } catch (error) {
-        this.ui.writeWarnLine('error storing tag');
-        this.ui.writeWarnLine(JSON.stringify(error, null, 2));
-      }
+    if (cb) {
+      cb(0, max);
     }
 
-    this.ui.startProgress('linking tags');
+    for (let i = 0; i < max; i++) {
+      try {
+        await session.run(queryTuple[0][i], queryTuple[1][i]);
 
-    for (const document of documents) {
-      for (const tag of document.tags) {
-        for (const subTag of tag.subTags) {
-          const t1 = caseInsensitiveRegexMatch(tag.tag);
-          const t2 = caseInsensitiveRegexMatch(subTag.tag);
-
-          try {
-            await session.run(`
-              MATCH (t1:Tag) WHERE t1.tag =~ {t1}
-              MATCH (t2:Tag) WHERE t2.tag =~ {t2}
-              MERGE (t1)-[:Tag]->(t2)
-              RETURN 0
-            `, { t1, t2 })
-          } catch (error) {
-            this.ui.writeWarnLine('error linking tags');
-            this.ui.writeWarnLine(JSON.stringify(error, null, 2));
-          }
+        if (cb) {
+          cb(i, max);
         }
-      }
-    }
-
-    this.ui.startProgress('storing articles');
-
-    for (const document of documents) {
-      const { date, text, title } = document;
-      const id = generateUuid(date, title);
-
-      const queries: string[] = [];
-      const params = { id, date, text, title };
-
-      queries.push(`
-        CREATE (a:Article { id: {id}, title: {title}, text: {text}, date: {date} })
-        WITH a
-      `);
-
-      document.tags.forEach((tag, i) => {
-        queries.push(`
-          MATCH (t:Tag) WHERE t.tag =~ {tag${i}}
-          MERGE (a)-[:Tag]->(t)
-          WITH a
-        `);
-
-        params[`tag${i}`] = caseInsensitiveRegexMatch(tag.tag);
-
-        tag.subTags.forEach((subTag, j) => {
-          queries.push(`
-            MATCH (t:Tag) WHERE t.tag =~ {tag${i}_${j}}
-            MERGE (a)-[:Tag]->(t)
-            WITH a
-          `);
-
-          params[`tag${i}_${j}`] = caseInsensitiveRegexMatch(subTag.tag);
-        });
-      });
-
-      // try {
-      //   this.ui.startProgress('tokenizing document');
-
-      //   const body = `${document.title}\n${document.text}`;
-      //   const entities: Entity[] = await (await fetch(tokenizationUrl, { body, method })).json();
-
-      //   this.ui.startProgress('storing tokens');
-
-      //   let k = 0;
-      //   for (const entity of entities) {
-      //     const type = classify(entity.type)
-      //     const key = camelize(entity.type)
-
-      //     try {
-      //       await session.run(`
-      //         MERGE (t:${type} { tag: {tag} }) RETURN t
-      //       `, { tag: entity.value })
-
-      //       queries.push(`
-      //         MATCH (t:${type}) WHERE t.tag =~ {${key}_${k}}
-      //         MERGE (a)-[:${type}]->(t)
-      //         WITH a
-      //       `);
-
-      //       params[`${key}_${k}`] = caseInsensitiveRegexMatch(entity.value);
-
-      //       k++;
-      //     } catch (error) {
-      //       this.ui.writeWarnLine('error storing tag');
-      //       this.ui.writeWarnLine(JSON.stringify(error, null, 2));
-      //     }
-      //   }
-      // } catch (error) {
-      //   this.ui.writeWarnLine('error parsing entities');
-      //   this.ui.writeWarnLine(JSON.stringify(error, null, 2));
-      // }
-
-      queries.push(`
-        RETURN 0
-      `);
-
-      try {
-        await session.run(queries.join("\n"), params);
       } catch (error) {
-        this.ui.writeWarnLine('error creating articles');
-        this.ui.writeWarnLine(JSON.stringify(error, null, 2));
+        this.ui.writeWarnLine(JSON.stringify({
+          title: 'Could not run query.',
+          message: `There was a problem processing the query:\n${queryTuple[0][i]}`,
+          parameters: queryTuple[1][i],
+          error
+        }, null, 2));
       }
     }
 
     session.close();
-    this.ui.stopProgress();
-    this.ui.writeInfoLine('should be finished importing markdown');
-
-    return documents;
   }
 
-  tagsFrom(documents: Document[]): Set<string> {
-    const tags: Set<string> = new Set();
+  async run(): Promise<any> {
+    const documents = await this.getArticles();
+    const [entityMap, entityRelationshipMap, documentRelationshipMap] = this.entitiesFrom(documents);
+
+    this.ui.startProgress('');
+
+    const [entityTokenMap, documentTokenRelationshipMap] = await this.entitiesFromTokenization(documents, (i, m) => this.ui.startProgress(`Fetching tokens (${Math.ceil((i/m)*100)}%)`));
+
+    await this.insert(this.createArticleQueriesFrom(documents), (i, m) => this.ui.startProgress(`Creating articles (${Math.ceil((i/m)*100)}%)`));
+    await this.insert(this.createTagQueriesFrom(entityMap), (i, m) => this.ui.startProgress(`Creating tags (${Math.ceil((i/m)*100)}%)`));
+    await this.insert(this.createTagRelationshipQueriesFrom(entityRelationshipMap), (i, m) => this.ui.startProgress(`Creating tag relationships (${Math.ceil((i/m)*100)}%)`));
+    await this.insert(this.createArticleRelationshipQueriesFrom(documentRelationshipMap), (i, m) => this.ui.startProgress(`Creating article relationships (${Math.ceil((i/m)*100)}%)`));
+    await this.insert(this.createTagQueriesFromTokens(entityTokenMap), (i, m) => this.ui.startProgress(`Creating tokens (${Math.ceil((i/m)*100)}%)`));
+    await this.insert(this.createArticleRelationshipQueriesFromTokens(entityTokenMap, documentTokenRelationshipMap), (i, m) => this.ui.startProgress(`Creating token relationships (${Math.ceil((i/m)*100)}%)`));
+
+    this.ui.stopProgress();
+  }
+
+  entitiesFrom(documents: Document[]): EntitiesTuple {
+    const entityMap: Map<string, string> = new Map();
+    const entityRelationshipMap: Map<string, Set<string>> = new Map();
+    const documentRelationshipMap: Map<string, Set<string>> = new Map();
 
     documents.forEach(document => {
+      const { id } = document;
+
       document.tags.forEach(tag => {
-        tags.add(tag.tag);
-        tag.subTags.forEach(subTag => tags.add(subTag.tag))
+        const key = uuidize(tag.tag);
+
+        if (!documentRelationshipMap.has(id)) {
+          documentRelationshipMap.set(id, new Set());
+        }
+
+        if (!entityMap.has(key)) {
+          entityMap.set(key, titleize(tag.tag));
+        }
+
+        documentRelationshipMap.get(id).add(key);
+
+        tag.subTags.forEach(tag => {
+          const subKey = uuidize(tag.tag);
+
+          if (!entityMap.has(subKey)) {
+            entityMap.set(subKey, titleize(tag.tag));
+          }
+
+          if (!entityRelationshipMap.has(key)) {
+            entityRelationshipMap.set(key, new Set());
+          }
+
+          documentRelationshipMap.get(id).add(subKey);
+
+          entityRelationshipMap.get(key).add(subKey);
+        });
       });
     });
 
-    return tags;
+    return [entityMap, entityRelationshipMap, documentRelationshipMap];
+  }
+
+  async entitiesFromTokenization(documents: Document[], cb?: InsertProgressCallback): Promise<EntitiesTokensTuple> {
+    const entityMap: Map<string, Entity> = new Map();
+    const documentRelationshipMap: Map<string, Set<string>> = new Map();
+    const url = this.env.optional('tokenization.url') || 'http://localhost:5000';
+    const method = 'POST';
+    const max = documents.length;
+
+    if (cb) {
+      cb(0, max);
+    }
+
+    for (let i = 0; i < max; i++) {
+      const document = documents[i];
+      const { id } = document;
+      const body = `${document.title}\n${document.text}`;
+
+      try {
+        (await (await fetch(url, { method, body }))
+          .json() as Entity[])
+          .forEach(entity => {
+            const type = classify(underscore(parameterize(entity.type)));
+            const { value } = entity;
+            const key = uuidize(type, value);
+
+            entityMap.set(key, { type, value });
+
+            if (!documentRelationshipMap.has(id)) {
+              documentRelationshipMap.set(id, new Set());
+            }
+
+            documentRelationshipMap.get(id).add(key);
+          });
+
+        if (cb) {
+          cb(i, max);
+        }
+      } catch (error) {
+        this.ui.writeWarnLine(JSON.stringify({
+          title: 'Could not fetch tokens.',
+          message: `There was a problem fetching tokens for:\n${id}`,
+          parameters: body,
+          error
+        }, null, 2));
+      }
+    }
+
+    return [entityMap, documentRelationshipMap];
+  }
+
+  createTagQueriesFromTokens(entityMap: Map<string, Entity>): QueryTuple {
+    const queries: string[] = [];
+    const params: EntityParam[] = [];
+
+    entityMap.forEach((entity, key) => {
+      const { type, value } = entity;
+      const id = generateQueryVariable(type, 'id', key);
+      const title = generateQueryVariable(type, 'value', key);
+
+      queries.push(`
+        MERGE (t:${type} { id: { ${id} }, title: { ${title} } })
+        RETURN 0
+      `);
+
+      params.push({
+        [id]: key,
+        [title]: value
+      });
+    });
+
+    return [queries, params];
+  }
+
+  createArticleRelationshipQueriesFromTokens(entityMap: Map<string, Entity>, documentRelationshipMap: Map<string, Set<string>>): QueryTuple {
+    const queries: string[] = [];
+    const params: EntityParam[] = [];
+
+    documentRelationshipMap.forEach((values, documentId) => {
+      const parent = generateQueryVariable('article', 'parent', 'id', documentId);
+
+      values.forEach(entityId => {
+        const { type } = entityMap.get(entityId);
+        const child = generateQueryVariable('article', type, 'id', entityId);
+
+        queries.push(`
+          MATCH (parent:Article) WHERE parent.id = { ${parent} }
+          MATCH (child:${type}) WHERE child.id = { ${child} }
+          MERGE (parent)-[:${type}]->(child)
+          RETURN 0
+        `);
+
+        params.push({
+          [parent]: documentId,
+          [child]: entityId,
+        });
+      });
+    });
+
+    return [queries, params];
+  }
+
+  createTagQueriesFrom(entityMap: Map<string, string>): QueryTuple {
+    const queries: string[] = [];
+    const params: EntityParam[] = [];
+
+    entityMap.forEach((value, key) => {
+      const id = generateQueryVariable('tag', 'id', key);
+      const name = generateQueryVariable('tag', 'name', key);
+
+      queries.push(`
+        MERGE (t:Tag { id: { ${id} }, title: { ${name} } })
+        RETURN 0
+      `);
+
+      params.push({
+        [id]: key,
+        [name]: value
+      });
+    });
+
+    return [queries, params];
+  }
+
+  createTagRelationshipQueriesFrom(entityRelationshipMap: Map<string, Set<string>>): QueryTuple {
+    const queries: string[] = [];
+    const params: EntityParam[] = [];
+
+    entityRelationshipMap.forEach((values, key) => {
+      const t1 = generateQueryVariable('tag', 'parent', 'id', key);
+
+      values.forEach(value => {
+        const t2 = generateQueryVariable('tag', 'child', 'id', value);
+
+        queries.push(`
+          MATCH (t1:Tag) WHERE t1.id = { ${t1} }
+          MATCH (t2:Tag) WHERE t2.id = { ${t2} }
+          MERGE (t1)-[:Tag]->(t2)
+          RETURN 0
+        `);
+
+        params.push({
+          [t1]: key,
+          [t2]: value
+        });
+      });
+    });
+
+    return [queries, params];
+  }
+
+  createArticleRelationshipQueriesFrom(documentRelationshipMap: Map<string, Set<string>>): QueryTuple {
+    const queries: string[] = [];
+    const params: EntityParam[] = [];
+
+    documentRelationshipMap.forEach((values, key) => {
+      const parent = generateQueryVariable('article', 'parent', 'id', key);
+
+      values.forEach(value => {
+        const child = generateQueryVariable('article', 'tag', 'id', value);
+
+        queries.push(`
+          MATCH (parent:Article) WHERE parent.id = { ${parent} }
+          MATCH (child:Tag) WHERE child.id = { ${child} }
+          MERGE (parent)-[:Tag]->(child)
+          RETURN 0
+        `);
+
+        params.push({
+          [parent]: key,
+          [child]: value,
+        });
+      });
+    });
+
+    return [queries, params];
+  }
+
+  createArticleQueriesFrom(documents: Document[]): QueryTuple {
+    const queries: string[] = [];
+    const params: EntityParam[] = [];
+
+    documents.forEach(document => {
+      const id = generateQueryVariable('article', 'id', document.id);
+      const title = generateQueryVariable('article', 'title', document.id);
+      const body = generateQueryVariable('article', 'body', document.id);
+      const createdAt = generateQueryVariable('article', 'createdAt', document.id);
+
+      queries.push(`
+        MERGE (a:Article { id: { ${id} }, createdAt: { ${createdAt} }, title: { ${title} }, text: { ${body} } })
+        RETURN 0
+      `);
+
+      params.push({
+        [id]: document.id,
+        [createdAt]: document.date,
+        [title]: document.title,
+        [body]: document.text
+      });
+    });
+
+    return [queries, params];
   }
 
   async getArticles(): Promise<Document[]> {
@@ -300,10 +463,12 @@ export default class ImportMarkdownTask implements Task {
           document.date = row.date;
         } else if (row.isTitle) {
           if (document) {
+            document.id = uuidize(document.date, document.title);
             documents.push(Object.assign({}, document));
           }
 
           document = {
+            id: '',
             date: '',
             title: row.title,
             text: '',

@@ -39,6 +39,7 @@
     "cheerio": "^1.0.0-rc.3",
     "console-ui": "^3.0.2",
     "csv-parse": "^4.4.0",
+    "cypher-query-builder": "^3.8.5",
     "iconv-lite": "^0.4.24",
     "inflected": "^2.0.4",
     "into-stream": "^5.1.0",
